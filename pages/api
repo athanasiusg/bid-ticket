@@ -1,21 +1,42 @@
 import { neon } from '@neondatabase/serverless';
 
-export default async function handler(request, response) {
+export default async function handler(req, res) {
   const sql = neon(process.env.DATABASE_URL);
 
-  // Handle GET request: Fetch bids for a specific event
-  if (request.method === 'GET') {
-    const { eventId } = request.query;
-    const bids = await sql`SELECT * FROM bids WHERE event_id = ${eventId} ORDER BY amount DESC`;
-    return response.status(200).json(bids);
+  // GET /api/bids?event_id=123
+  if (req.method === 'GET') {
+    const { event_id } = req.query;
+
+    if (!event_id) {
+      return res.status(400).json({ error: 'Missing event_id' });
+    }
+
+    const bids = await sql`
+      SELECT id, event_id, amount, user_email, created_at
+      FROM bids
+      WHERE event_id = ${event_id}
+      ORDER BY amount DESC
+    `;
+
+    return res.status(200).json({ bids });
   }
 
-  // Handle POST request: Save a new bid
-  if (request.method === 'POST') {
-    const { eventId, amount, email } = request.body;
-    await sql`INSERT INTO bids (event_id, amount, user_email) VALUES (${eventId}, ${amount}, ${email})`;
-    return response.status(200).json({ message: 'Bid placed successfully!' });
+  // POST /api/bids
+  if (req.method === 'POST') {
+    const { event_id, amount, email } = req.body;
+
+    if (!event_id || !amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const result = await sql`
+      INSERT INTO bids (event_id, amount, user_email)
+      VALUES (${event_id}, ${amount}, ${email || null})
+      RETURNING id, event_id, amount, user_email, created_at
+    `;
+
+    return res.status(200).json({ bid: result[0] });
   }
 
-  return response.status(405).json({ error: 'Method not allowed' });
+  return res.status(405).json({ error: 'Method not allowed' });
 }
