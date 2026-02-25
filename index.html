@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Ticket as TicketIcon,
   ArrowLeft,
@@ -470,11 +470,13 @@ function BidHistoryPanel({ selectedEvent, bidLog }) {
         ) : (
           <div className="flex flex-col gap-2">
             {items.map((b) => {
-              const ok = !["toolow", "tooslow"].includes(b.status);
+              const failed = b.status === "FAILED";
+              const ok = !["toolow", "tooslow", "FAILED"].includes(b.status);
               const Icon = ok ? CheckCircle2 : XCircle;
               const tone = ok ? "text-emerald-300" : "text-rose-300";
-              const badge =
-                b.status === "crushing"
+              const badge = failed
+                ? "Save failed"
+                : b.status === "crushing"
                   ? "Crushing"
                   : b.status === "barelywin"
                     ? "Barely"
@@ -502,7 +504,7 @@ function BidHistoryPanel({ selectedEvent, bidLog }) {
                     </div>
                   </div>
                   <span className={`shrink-0 text-[10px] font-black uppercase tracking-widest ${tone}`}>
-                    {ok ? "Valid" : "Rejected"}
+                    {failed ? "Local only" : ok ? "Valid" : "Rejected"}
                   </span>
                 </div>
               );
@@ -513,6 +515,125 @@ function BidHistoryPanel({ selectedEvent, bidLog }) {
     </div>
   );
 }
+
+// ── Database (Server-Side Example)
+// This section assumes you are using Next.js (App Router or Pages Router)
+// and deploying on Vercel. DO NOT run this in the browser.
+// DATABASE_URL is read from process.env.DATABASE_URL.
+
+/*
+Example: /app/api/init-db/route.ts   (Next.js App Router)
+
+import { NextResponse } from "next/server";
+import { Pool } from "pg";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }, // Required for most Vercel-hosted Postgres
+});
+
+export async function GET() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "Bids" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id INTEGER NOT NULL,
+        ticket_id TEXT NOT NULL,
+        section TEXT NOT NULL,
+        amount NUMERIC(12,2) NOT NULL,
+        status TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+
+    return NextResponse.json({ success: true, message: "Bids table ready" });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ success: false, error: "DB init failed" }, { status: 500 });
+  }
+}
+*/
+
+/*
+If using Pages Router instead:
+
+// pages/api/init-db.ts
+import type { NextApiRequest, NextApiResponse } from "next";
+import { Pool } from "pg";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "Bids" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id INTEGER NOT NULL,
+        ticket_id TEXT NOT NULL,
+        section TEXT NOT NULL,
+        amount NUMERIC(12,2) NOT NULL,
+        status TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+    `);
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+}
+*/
+
+// After deploying, hit /api/init-db once to create the table.
+
+/*
+Real bidding API route using process.env.DATABASE_URL
+
+Example: /app/api/bids/route.ts (Next.js App Router)
+
+import { NextResponse } from "next/server";
+import { Pool } from "pg";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
+
+export async function POST(req: Request) {
+  const body = await req.json();
+  const { event_id, ticket_id, section, amount, status } = body;
+
+  const result = await pool.query(
+    `INSERT INTO "Bids"(event_id, ticket_id, section, amount, status)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, event_id, ticket_id, section, amount, status, created_at`,
+    [event_id, ticket_id, section, amount, status]
+  );
+
+  return NextResponse.json({ bid: result.rows[0] });
+}
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const eventId = searchParams.get("event_id");
+
+  const result = await pool.query(
+    `SELECT id, event_id, ticket_id, section, amount, status, created_at
+     FROM "Bids"
+     WHERE ($1::int IS NULL OR event_id = $1::int)
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [eventId ? Number(eventId) : null]
+  );
+
+  return NextResponse.json({ bids: result.rows });
+}
+
+*/
 
 // ── App ──────────────────────────────────────────────────────────────────────
 
@@ -533,6 +654,97 @@ export default function BidTicket() {
 
   const [bidBook, setBidBook] = useState(() => initialBidBook);
   const [bidLog, setBidLog] = useState([]);
+  const [bidSyncStatus, setBidSyncStatus] = useState("idle"); // idle | loading | error | ok
+
+  // Real bidding: persist bids server-side via /api/bids.
+  // The API route (server-side) uses process.env.DATABASE_URL.
+  const persistBid = async (entry) => {
+    if (!selectedEvent) return;
+
+    const tempId = `tmp_${Date.now().toString(16)}_${Math.random().toString(16).slice(2)}`;
+    const tempRow = {
+      id: tempId,
+      eventId: selectedEvent.id,
+      eventName: selectedEvent.name,
+      ...entry,
+    };
+
+    // optimistic UI
+    setBidLog((prev) => [tempRow, ...prev]);
+
+    try {
+      const res = await fetch("/api/bids", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_id: selectedEvent.id,
+          ticket_id: entry.ticketId,
+          section: entry.section,
+          amount: entry.amount,
+          status: entry.status,
+          client_created_at: entry.at,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Bid save failed");
+      const data = await res.json();
+      const saved = data?.bid;
+      if (!saved?.id) throw new Error("Invalid bid response");
+
+      // replace temp row
+      setBidLog((prev) =>
+        prev.map((b) =>
+          b.id === tempId
+            ? {
+                id: saved.id,
+                eventId: saved.event_id,
+                eventName: selectedEvent.name,
+                ticketId: saved.ticket_id,
+                section: saved.section,
+                amount: Number(saved.amount),
+                status: saved.status,
+                at: saved.created_at,
+              }
+            : b
+        )
+      );
+    } catch {
+      // mark temp row as failed
+      setBidLog((prev) => prev.map((b) => (b.id === tempId ? { ...b, status: "FAILED" } : b)));
+    }
+  };
+
+  // When an event is opened, load its bids from the server.
+  useEffect(() => {
+    const load = async () => {
+      if (!selectedEvent) return;
+      setBidSyncStatus("loading");
+      try {
+        const res = await fetch(`/api/bids?event_id=${encodeURIComponent(selectedEvent.id)}`);
+        if (!res.ok) throw new Error("Fetch failed");
+        const data = await res.json();
+        const rows = Array.isArray(data?.bids) ? data.bids : [];
+
+        const normalized = rows.map((r) => ({
+          id: r.id,
+          eventId: r.event_id,
+          eventName: selectedEvent.name,
+          ticketId: r.ticket_id,
+          section: r.section,
+          amount: Number(r.amount),
+          status: r.status,
+          at: r.created_at,
+        }));
+
+        setBidLog(normalized);
+        setBidSyncStatus("ok");
+      } catch {
+        setBidSyncStatus("error");
+      }
+    };
+
+    void load();
+  }, [selectedEvent]);
 
   const filteredEvents = useMemo(() => {
     if (filter === "All") return events;
@@ -665,6 +877,12 @@ export default function BidTicket() {
 
             <BidHistoryPanel selectedEvent={selectedEvent} bidLog={bidLog} />
 
+            {bidSyncStatus === "loading" ? (
+              <div className="mb-6 text-white/40 text-xs">Syncing bids…</div>
+            ) : bidSyncStatus === "error" ? (
+              <div className="mb-6 text-rose-300 text-xs">Could not load bids from server. Showing local activity only.</div>
+            ) : null}
+
             <div>
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-white font-bold text-lg">Available Tickets</h3>
@@ -684,17 +902,7 @@ export default function BidTicket() {
                           [ticket.id]: { highBid: val, isWinning: true },
                         }));
                       }}
-                      onLogBid={(entry) => {
-                        setBidLog((prev) => [
-                          {
-                            id: `${Date.now().toString(16)}_${Math.random().toString(16).slice(2)}`,
-                            eventId: selectedEvent.id,
-                            eventName: selectedEvent.name,
-                            ...entry,
-                          },
-                          ...prev,
-                        ]);
-                      }}
+                      onLogBid={persistBid}
                     />
                   </div>
                 ))}
