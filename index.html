@@ -5,187 +5,545 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BidTicket</title>
 
-  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- React 18 -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-  <!-- Babel (so we can use JSX in this single file) -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Lucide -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-
   <style>
-    body {
-      background: linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 40%, #0a0a14 100%);
-    }
+    body { background: linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 40%, #0a0a14 100%); }
+    * { box-sizing: border-box; }
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type=number] { -moz-appearance: textfield; }
   </style>
 </head>
 
 <body class="text-white min-h-screen">
+  <div id="root"></div>
 
-<div id="root"></div>
+  <script type="text/babel">
+    const { useEffect, useMemo, useState } = React;
 
-<script type="text/babel">
+    const BRAND = {
+      indigo: "#4f46e5",
+      indigoDeep: "#3730a3",
+    };
 
-const { useState } = React;
+    const events = [
+      {
+        id: 101,
+        name: "Lakers vs. Celtics",
+        subtitle: "Rivals. Spotlight. Noise.",
+        venue: "Crypto.com Arena, Los Angeles",
+        date: "Mar 18, 2026",
+        time: "7:30 PM",
+        emoji: "🏀",
+        gradient: "from-indigo-950 via-slate-950 to-black",
+        tickets: [
+          { id: "l1", section: "Lower Bowl", highBid: 420, minBid: 220 },
+          { id: "l2", section: "Premier", highBid: 650, minBid: 350 },
+          { id: "l3", section: "Upper Bowl", highBid: 140, minBid: 80 },
+        ],
+      },
+      {
+        id: 202,
+        name: "Olivia Dean Tickets",
+        subtitle: "The Art of Loving Live",
+        venue: "The Wiltern, Los Angeles",
+        date: "Apr 9, 2026",
+        time: "8:00 PM",
+        emoji: "🎤",
+        gradient: "from-fuchsia-950 via-slate-950 to-black",
+        tickets: [
+          { id: "o1", section: "GA Floor", highBid: 160, minBid: 75 },
+          { id: "o2", section: "Loge", highBid: 230, minBid: 110 },
+          { id: "o3", section: "Balcony", highBid: 120, minBid: 60 },
+        ],
+      },
+      {
+        id: 303,
+        name: "Dodgers vs. Yankees",
+        subtitle: "World Series Rematch",
+        venue: "Dodger Stadium, Los Angeles",
+        date: "May 2, 2026",
+        time: "6:40 PM",
+        emoji: "⚾",
+        gradient: "from-sky-950 via-slate-950 to-black",
+        tickets: [
+          { id: "d1", section: "Field Level", highBid: 280, minBid: 140 },
+          { id: "d2", section: "Reserve", highBid: 190, minBid: 95 },
+          { id: "d3", section: "Top Deck", highBid: 110, minBid: 55 },
+        ],
+      },
+    ];
 
-/* ─────────────────────────────────────────────── */
-/* Rico Local Commentary (No API required)       */
-/* ─────────────────────────────────────────────── */
-
-function classifyBid(bidAmount, currentHighBid, minBid) {
-  if (bidAmount < minBid) return "toolow";
-  if (bidAmount <= currentHighBid) return "tooslow";
-  const margin = (bidAmount - currentHighBid) / currentHighBid;
-  if (margin > 0.30) return "crushing";
-  if (margin < 0.05) return "barelywin";
-  return "winning";
-}
-
-function ricoMock({ bidAmount, highBid, minBid, section }) {
-  if (bidAmount < minBid) {
-    return `You tried $${bidAmount}. Minimum is $${minBid}. That's not a bid, that's optimism.`;
-  }
-  if (bidAmount <= highBid) {
-    return `Current high is $${highBid}. You tossed in $${bidAmount}. Math still matters.`;
-  }
-  if (bidAmount > highBid * 1.3) {
-    return `Whoa. $${bidAmount} over $${highBid}? That's a power move.`;
-  }
-  return `Nice. $${bidAmount} clears $${highBid}. You're leading in ${section}.`;
-}
-
-/* ─────────────────────────────────────────────── */
-/* Demo Data                                      */
-/* ─────────────────────────────────────────────── */
-
-const events = [
-  {
-    id: 1,
-    name: "2026 AI Summit",
-    subtitle: "The Future of Intelligence",
-    venue: "Moscone Center, San Francisco",
-    image: "🤖",
-    tickets: [
-      { id: "t1", section: "Keynote Floor", highBid: 480, minBid: 200 },
-      { id: "t2", section: "VIP Lounge", highBid: 1200, minBid: 800 },
-      { id: "t3", section: "General Admission", highBid: 95, minBid: 40 }
-    ]
-  }
-];
-
-/* ─────────────────────────────────────────────── */
-/* Ticket Row                                     */
-/* ─────────────────────────────────────────────── */
-
-function TicketRow({ ticket }) {
-  const [currentHighBid, setCurrentHighBid] = useState(ticket.highBid);
-  const [bidValue, setBidValue] = useState("");
-  const [commentary, setCommentary] = useState("");
-
-  const handleBid = () => {
-    const val = parseFloat(bidValue);
-    if (!val) return;
-
-    const status = classifyBid(val, currentHighBid, ticket.minBid);
-    setCommentary(ricoMock({
-      bidAmount: val,
-      highBid: currentHighBid,
-      minBid: ticket.minBid,
-      section: ticket.section
-    }));
-
-    if (status !== "toolow" && status !== "tooslow") {
-      setCurrentHighBid(val);
+    function classifyBid(bidAmount, currentHighBid, minBid) {
+      if (bidAmount < minBid) return "toolow";
+      if (bidAmount <= currentHighBid) return "tooslow";
+      const margin = (bidAmount - currentHighBid) / currentHighBid;
+      if (margin > 0.30) return "crushing";
+      if (margin < 0.05) return "barelywin";
+      return "winning";
     }
 
-    setBidValue("");
-  };
+    function ricoMock({ bidAmount, highBid, minBid, section }) {
+      const fmt = (n) => `$${Number(n).toLocaleString()}`;
+      if (bidAmount < minBid) return `You tried ${fmt(bidAmount)}. Minimum is ${fmt(minBid)}. That's not a bid, that's hope.`;
+      if (bidAmount <= highBid) return `Current high is ${fmt(highBid)}. You offered ${fmt(bidAmount)}. Rico respects confidence, not ties.`;
+      if (bidAmount > highBid * 1.3) return `Whoa. ${fmt(bidAmount)} over ${fmt(highBid)}. That's you buying silence.`;
+      return `Clean. ${fmt(bidAmount)} clears ${fmt(highBid)} and puts you in the lead in ${section}.`;
+    }
 
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 mb-4">
-      <div className="flex justify-between items-center">
-        <div>
-          <p className="font-semibold">{ticket.section}</p>
-          <p className="text-sm text-white/50">Min: ${ticket.minBid}</p>
-        </div>
-        <div className="text-xl font-bold">${currentHighBid}</div>
-      </div>
+    function TicketLogo() {
+      return (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="shrink-0">
+          <path
+            d="M4 8.5C4 7.119 5.119 6 6.5 6H17.5C18.881 6 20 7.119 20 8.5V9.1C18.895 9.286 18 10.248 18 11.4C18 12.552 18.895 13.514 20 13.7V14.5C20 15.881 18.881 17 17.5 17H6.5C5.119 17 4 15.881 4 14.5V13.7C5.105 13.514 6 12.552 6 11.4C6 10.248 5.105 9.286 4 9.1V8.5Z"
+            stroke={BRAND.indigo}
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path d="M9 7.5V15.5" stroke={BRAND.indigo} strokeWidth="1.8" strokeLinecap="round" strokeDasharray="2.2 2.2" />
+        </svg>
+      );
+    }
 
-      <div className="mt-4 flex gap-2">
-        <input
-          type="number"
-          value={bidValue}
-          onChange={(e) => setBidValue(e.target.value)}
-          className="flex-1 bg-white/10 rounded-xl px-3 py-2 text-white outline-none"
-          placeholder={`Bid > ${currentHighBid}`}
-        />
-        <button
-          onClick={handleBid}
-          className="px-4 py-2 bg-indigo-600 rounded-xl font-bold hover:bg-indigo-500"
-        >
-          Bid
-        </button>
-      </div>
+    function money(n) {
+      return `$${Number(n).toLocaleString()}`;
+    }
 
-      {commentary && (
-        <div className="mt-3 text-sm text-indigo-300">
-          😎 {commentary}
-        </div>
-      )}
-    </div>
-  );
-}
+    function storageKey(eventId) {
+      return `bidticket:bids:event:${eventId}`;
+    }
 
-/* ─────────────────────────────────────────────── */
-/* Main App                                       */
-/* ─────────────────────────────────────────────── */
+    async function apiGetBids(eventId) {
+      const res = await fetch(`/api/bids?event_id=${encodeURIComponent(eventId)}`, { method: "GET" });
+      if (!res.ok) throw new Error("api_get_failed");
+      const data = await res.json();
+      return Array.isArray(data?.bids) ? data.bids : [];
+    }
 
-function App() {
-  const [selectedEvent, setSelectedEvent] = useState(null);
+    async function apiPostBid({ event_id, ticket_id, section, amount, status }) {
+      const res = await fetch(`/api/bids`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id, ticket_id, section, amount, status }),
+      });
+      if (!res.ok) throw new Error("api_post_failed");
+      const data = await res.json();
+      return data?.bid;
+    }
 
-  return (
-    <div className="max-w-4xl mx-auto px-6 py-10">
-      <h1 className="text-4xl font-black mb-8">BidTicket</h1>
+    function BidHistory({ bids }) {
+      if (!bids.length) {
+        return <div className="text-white/40 text-sm">No bids yet.</div>;
+      }
 
-      {!selectedEvent ? (
-        events.map(event => (
-          <div
-            key={event.id}
-            onClick={() => setSelectedEvent(event)}
-            className="cursor-pointer rounded-2xl bg-white/5 p-6 mb-4 hover:bg-white/10 transition"
-          >
-            <h2 className="text-xl font-bold">{event.image} {event.name}</h2>
-            <p className="text-white/50 text-sm">{event.subtitle}</p>
-          </div>
-        ))
-      ) : (
-        <div>
-          <button
-            onClick={() => setSelectedEvent(null)}
-            className="mb-6 text-indigo-400"
-          >
-            ← Back
-          </button>
-
-          <h2 className="text-2xl font-bold mb-6">{selectedEvent.name}</h2>
-
-          {selectedEvent.tickets.map(ticket => (
-            <TicketRow key={ticket.id} ticket={ticket} />
+      return (
+        <div className="flex flex-col gap-2">
+          {bids.slice(0, 10).map((b) => (
+            <div key={b.id} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-white/85 text-sm font-semibold truncate">
+                  {b.section} · {money(b.amount)} · <span className="text-white/50">{b.status}</span>
+                </div>
+                <div className="text-white/35 text-xs mt-1">
+                  {b.created_at ? new Date(b.created_at).toLocaleString() : (b.at ? new Date(b.at).toLocaleString() : "")}
+                </div>
+              </div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-white/45">Event {b.event_id}</div>
+            </div>
           ))}
         </div>
-      )}
-    </div>
-  );
-}
+      );
+    }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    function EventCard({ event, onClick }) {
+      const lowest = Math.min(...event.tickets.map((t) => t.highBid));
+      return (
+        <div
+          onClick={onClick}
+          className="group cursor-pointer rounded-3xl overflow-hidden border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] transition-all"
+          style={{ boxShadow: "0 12px 50px rgba(0,0,0,0.45)" }}
+        >
+          <div className={`relative bg-gradient-to-br ${event.gradient}`}>
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)" }}
+            />
+            <div className="relative p-6">
+              <div className="flex items-start justify-between">
+                <div className="text-4xl">{event.emoji}</div>
+                <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-black tracking-widest text-white/80">
+                  Bids from {money(lowest)}
+                </span>
+              </div>
 
-</script>
+              <div className="mt-4">
+                <div className="text-xl font-black tracking-tight">{event.name}</div>
+                <div className="text-white/60 text-xs mt-1 font-semibold uppercase tracking-[0.18em]">{event.subtitle}</div>
+              </div>
 
+              <div className="mt-5 flex flex-col gap-1 text-white/55 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-1.5 w-1.5 rounded-full" style={{ background: BRAND.indigo }} />
+                  <span className="truncate">{event.venue}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-white/25" />
+                  <span>{event.date} · {event.time}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t border-white/10 bg-black/20">
+            <div className="text-white/50 text-xs">
+              {event.tickets.length} premium listings
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function TicketRow({ eventId, ticket, initialHighBid, onHighBid, onBidAttempt }) {
+      const [currentHighBid, setCurrentHighBid] = useState(initialHighBid ?? ticket.highBid);
+      const [bidValue, setBidValue] = useState("");
+      const [error, setError] = useState("");
+      const [ricoText, setRicoText] = useState("");
+
+      useEffect(() => {
+        setCurrentHighBid(initialHighBid ?? ticket.highBid);
+      }, [initialHighBid, ticket.highBid]);
+
+      const submit = async () => {
+        const val = Number(bidValue);
+        if (!bidValue || Number.isNaN(val) || val <= 0) {
+          setError("Enter a valid amount");
+          return;
+        }
+
+        const status = classifyBid(val, currentHighBid, ticket.minBid);
+        setRicoText(ricoMock({ bidAmount: val, highBid: currentHighBid, minBid: ticket.minBid, section: ticket.section }));
+
+        onBidAttempt({
+          event_id: eventId,
+          ticket_id: ticket.id,
+          section: ticket.section,
+          amount: val,
+          status,
+          at: new Date().toISOString(),
+        });
+
+        if (status === "toolow") { setError(`Minimum bid is ${money(ticket.minBid)}`); return; }
+        if (status === "tooslow") { setError(`Must exceed current high of ${money(currentHighBid)}`); return; }
+
+        setError("");
+        setCurrentHighBid(val);
+        onHighBid(ticket.id, val);
+        setBidValue("");
+      };
+
+      return (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.05] transition p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="text-white font-semibold">{ticket.section}</div>
+              <div className="text-white/45 text-xs mt-1">Minimum {money(ticket.minBid)}</div>
+            </div>
+
+            <div className="flex items-center gap-8 shrink-0">
+              <div className="text-center">
+                <div className="text-white/40 text-[10px] uppercase tracking-widest font-black">High Bid</div>
+                <div className="text-white font-black text-xl mt-1 tabular-nums">{money(currentHighBid)}</div>
+              </div>
+            </div>
+
+            <div className="w-full sm:w-56 shrink-0">
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/35 text-sm font-black">$</span>
+                <input
+                  type="number"
+                  value={bidValue}
+                  onChange={(e) => { setBidValue(e.target.value); setError(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                  placeholder={`${(currentHighBid + 10).toLocaleString()}+`}
+                  className="w-full rounded-xl bg-white/5 border border-white/10 focus:border-white/25 px-4 py-2.5 pl-7 outline-none text-white placeholder-white/20"
+                />
+              </div>
+              {error ? <div className="text-rose-300 text-[11px] mt-1 px-1">{error}</div> : null}
+              <button
+                onClick={submit}
+                className="mt-2 w-full rounded-xl py-2.5 text-sm font-black tracking-tight border border-white/15 bg-white/10 hover:bg-white/15 transition active:scale-[0.99]"
+              >
+                Place Bid
+              </button>
+            </div>
+          </div>
+
+          {ricoText ? (
+            <div className="mt-4 rounded-2xl border border-indigo-500/25 bg-indigo-500/10 p-4">
+              <div className="text-indigo-200 text-[10px] font-black uppercase tracking-widest">Rico · BidTicket Analyst</div>
+              <div className="text-white/80 text-sm mt-1">{ricoText}</div>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    function App() {
+      const [query, setQuery] = useState("");
+      const [selectedEventId, setSelectedEventId] = useState(null);
+
+      const selectedEvent = useMemo(
+        () => events.find((e) => e.id === selectedEventId) || null,
+        [selectedEventId]
+      );
+
+      const filteredEvents = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return events;
+        return events.filter((e) => {
+          return (
+            e.name.toLowerCase().includes(q) ||
+            e.venue.toLowerCase().includes(q)
+          );
+        });
+      }, [query]);
+
+      const [highBidsByTicket, setHighBidsByTicket] = useState({});
+      const [bids, setBids] = useState([]);
+      const [syncStatus, setSyncStatus] = useState("idle"); // idle | loading | ok | error | local
+
+      useEffect(() => {
+        if (!selectedEvent) return;
+
+        setSyncStatus("loading");
+        setBids([]);
+        setHighBidsByTicket({});
+
+        const local = () => {
+          try {
+            const raw = localStorage.getItem(storageKey(selectedEvent.id));
+            const parsed = raw ? JSON.parse(raw) : [];
+            const list = Array.isArray(parsed) ? parsed : [];
+            setBids(list);
+
+            const hb = {};
+            for (const b of list) {
+              if (!hb[b.ticket_id] || Number(b.amount) > Number(hb[b.ticket_id])) hb[b.ticket_id] = Number(b.amount);
+            }
+            setHighBidsByTicket(hb);
+            setSyncStatus("local");
+          } catch {
+            setSyncStatus("local");
+          }
+        };
+
+        const remote = async () => {
+          try {
+            const rows = await apiGetBids(selectedEvent.id);
+            const normalized = rows.map((r) => ({
+              id: r.id,
+              event_id: r.event_id,
+              ticket_id: r.ticket_id,
+              section: r.section,
+              amount: Number(r.amount),
+              status: r.status,
+              created_at: r.created_at,
+            }));
+            setBids(normalized);
+
+            const hb = {};
+            for (const b of normalized) {
+              if (!hb[b.ticket_id] || Number(b.amount) > Number(hb[b.ticket_id])) hb[b.ticket_id] = Number(b.amount);
+            }
+            setHighBidsByTicket(hb);
+            setSyncStatus("ok");
+          } catch {
+            local();
+          }
+        };
+
+        remote();
+      }, [selectedEventId]);
+
+      const saveLocalBid = (eventId, bidRow) => {
+        const key = storageKey(eventId);
+        const next = [bidRow, ...bids].slice(0, 50);
+        setBids(next);
+        try {
+          localStorage.setItem(key, JSON.stringify(next));
+        } catch {}
+      };
+
+      const onBidAttempt = async (payload) => {
+        if (!selectedEvent) return;
+
+        // update local high bid for display even if rejected
+        if (payload.status !== "toolow" && payload.status !== "tooslow") {
+          setHighBidsByTicket((prev) => ({ ...prev, [payload.ticket_id]: payload.amount }));
+        }
+
+        // optimistic local write first
+        const localRow = {
+          id: `local_${Date.now().toString(16)}_${Math.random().toString(16).slice(2)}`,
+          event_id: payload.event_id,
+          ticket_id: payload.ticket_id,
+          section: payload.section,
+          amount: payload.amount,
+          status: payload.status,
+          created_at: payload.at,
+        };
+        saveLocalBid(selectedEvent.id, localRow);
+
+        // try remote save if backend exists
+        try {
+          const saved = await apiPostBid({
+            event_id: payload.event_id,
+            ticket_id: payload.ticket_id,
+            section: payload.section,
+            amount: payload.amount,
+            status: payload.status,
+          });
+
+          if (saved?.id) {
+            // replace local row in memory only (keep storage simple)
+            setBids((prev) => {
+              const without = prev.filter((b) => b.id !== localRow.id);
+              return [
+                {
+                  id: saved.id,
+                  event_id: saved.event_id,
+                  ticket_id: saved.ticket_id,
+                  section: saved.section,
+                  amount: Number(saved.amount),
+                  status: saved.status,
+                  created_at: saved.created_at,
+                },
+                ...without,
+              ].slice(0, 50);
+            });
+            setSyncStatus("ok");
+          }
+        } catch {
+          // stay local, no change
+        }
+      };
+
+      return (
+        <div className="min-h-screen">
+          <div className="max-w-5xl mx-auto px-5 py-10">
+            <header className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-2">
+                  <TicketLogo />
+                </div>
+                <div className="text-2xl font-black tracking-tight" style={{ color: BRAND.indigo }}>
+                  BidTicket
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/60">
+                  {syncStatus === "ok" ? "DB connected" : syncStatus === "loading" ? "Syncing" : "Local mode"}
+                </div>
+              </div>
+            </header>
+
+            <div className="mt-8">
+              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                <div className="text-white/60 text-xs font-black uppercase tracking-[0.18em]">Search</div>
+                <div className="mt-2">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by event name or venue"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 focus:border-white/25 px-4 py-3 outline-none text-white placeholder-white/25"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {selectedEvent ? (
+              <div className="mt-8">
+                <button
+                  onClick={() => setSelectedEventId(null)}
+                  className="text-white/55 hover:text-white transition text-sm font-semibold"
+                >
+                  Back to events
+                </button>
+
+                <div className={`mt-4 rounded-3xl overflow-hidden border border-white/10 bg-gradient-to-br ${selectedEvent.gradient}`}>
+                  <div className="p-7">
+                    <div className="text-5xl">{selectedEvent.emoji}</div>
+                    <div className="mt-3 text-3xl font-black tracking-tight">{selectedEvent.name}</div>
+                    <div className="text-white/65 mt-1">{selectedEvent.subtitle}</div>
+                    <div className="mt-4 text-white/55 text-sm">
+                      <div>{selectedEvent.venue}</div>
+                      <div>{selectedEvent.date} · {selectedEvent.time}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-white font-black tracking-tight">Bid History</div>
+                      <div className="text-white/45 text-xs mt-1">Saved per event_id. Local mode works in one file. DB mode requires an API.</div>
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <BidHistory bids={bids.filter((b) => Number(b.event_id) === Number(selectedEvent.id))} />
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="text-white font-black text-lg">Available Tickets</div>
+                    <div className="text-white/40 text-sm">{selectedEvent.tickets.length} listings</div>
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-3">
+                    {selectedEvent.tickets.map((t) => (
+                      <TicketRow
+                        key={t.id}
+                        eventId={selectedEvent.id}
+                        ticket={t}
+                        initialHighBid={highBidsByTicket[t.id] ?? t.highBid}
+                        onHighBid={() => {}}
+                        onBidAttempt={onBidAttempt}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-8">
+                <div className="text-white font-black text-lg">Premium Listings</div>
+                <div className="text-white/45 text-sm mt-1">Click an event to bid.</div>
+
+                <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredEvents.map((e) => (
+                    <EventCard key={e.id} event={e} onClick={() => setSelectedEventId(e.id)} />
+                  ))}
+                </div>
+
+                {filteredEvents.length === 0 ? (
+                  <div className="mt-6 text-white/40 text-sm">No matches. Try another search.</div>
+                ) : null}
+              </div>
+            )}
+
+            <div className="mt-10 text-white/35 text-xs">
+              Note on DATABASE_URL: static HTML cannot access process.env.DATABASE_URL. To use Postgres, add a backend route at /api/bids that reads DATABASE_URL server side.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
 </body>
 </html>
